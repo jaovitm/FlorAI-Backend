@@ -1,0 +1,8 @@
+# Copie para .dev.vars (não versionado) para rodar `npm run dev`.
+# Em produção: npx wrangler secret put ANTHROPIC_API_KEY
+ANTHROPIC_API_KEY=sk-ant-...
+# Só se a chave não estiver vinculada a um workspace:
+# ANTHROPIC_WORKSPACE_ID=wrkspc_...
+
+# Opcional: origem pública usada em imageUrl (padrão: origem da requisição).
+# PUBLIC_BASE_URL=https://api.florai.cc
