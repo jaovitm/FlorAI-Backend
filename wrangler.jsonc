@@ -14,5 +14,11 @@
       "database_id": "b522ed6a-3535-42fa-a013-e9b1ce1dbf6b",
       "migrations_dir": "migrations"
     }
+  ],
+  "r2_buckets": [
+    {
+      "binding": "BUCKET",
+      "bucket_name": "florai"
+    }
   ]
 }
