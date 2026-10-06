@@ -6,3 +6,7 @@ ANTHROPIC_API_KEY=sk-ant-...
 
 # Opcional: origem pública usada em imageUrl (padrão: origem da requisição).
 # PUBLIC_BASE_URL=https://api.florai.cc
+
+# Opcional: push (FCM). JSON da service account do Firebase em uma linha.
+# Em produção: npx wrangler secret put FIREBASE_SERVICE_ACCOUNT < service-account.json
+# FIREBASE_SERVICE_ACCOUNT={"type":"service_account","project_id":"florai-3212",...}

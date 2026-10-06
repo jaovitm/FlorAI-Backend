@@ -7,6 +7,8 @@ export type Bindings = {
   ANTHROPIC_WORKSPACE_ID?: string;
   /** Opcional: origem pública usada em `imageUrl` (padrão: origem da requisição). */
   PUBLIC_BASE_URL?: string;
+  /** Opcional (secret): JSON da service account do Firebase, usado para enviar push (FCM). */
+  FIREBASE_SERVICE_ACCOUNT?: string;
 };
 
 export type UserRow = {
@@ -19,6 +21,10 @@ export type UserRow = {
   password_salt: string;
   password_iterations: number;
   tz_offset: number;
+  /** Token FCM do aparelho que recebe push (último login). */
+  push_token: string | null;
+  /** Sistema do aparelho de `push_token`. */
+  push_platform: "android" | "ios" | null;
   created_at: string;
 };
 

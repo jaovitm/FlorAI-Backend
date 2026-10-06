@@ -1,0 +1,25 @@
+services:
+  api:
+    build: .
+    ports:
+      - "8787:8787"
+    volumes:
+      # Código montado para hot reload; .dev.vars é lido daqui pelo wrangler.
+      - .:/app
+      # Mantém o node_modules do container (Linux), sem usar o do host.
+      - /app/node_modules
+      # Persiste o estado local do D1 e do R2 entre reinícios.
+      - wrangler-state:/app/.wrangler
+    environment:
+      # Polling: eventos de arquivo não atravessam bind mounts do Windows.
+      CHOKIDAR_USEPOLLING: "true"
+    # Migrations + conta de teste (seeds/dev.sql) no D1 local, depois o worker.
+    # --test-scheduled: GET /__scheduled roda o cron na hora (o wrangler dev não agenda sozinho).
+    command: >
+      sh -c "npx wrangler d1 migrations apply florai --local
+      && npx wrangler d1 execute florai --local --file seeds/dev.sql
+      && npx wrangler dev --ip 0.0.0.0 --port 8787 --test-scheduled"
+    restart: unless-stopped
+
+volumes:
+  wrangler-state:
