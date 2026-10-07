@@ -8,6 +8,8 @@ export type ErrorCode =
   | "plan_limit"
   | "not_found"
   | "email_taken"
+  | "invalid_google_token"
+  | "google_account_conflict"
   | "identification_failed"
   | "rate_limited"
   | "internal_error";

@@ -8,6 +8,10 @@
   "triggers": {
     "crons": ["* * * * *"]
   },
+  "vars": {
+    // Cliente OAuth "Web" do projeto Firebase florai-3212 (público, não é segredo).
+    "GOOGLE_CLIENT_ID": "503762981006-3oud6d2t6cafoltamooi00hr3fnons4f.apps.googleusercontent.com"
+  },
   "observability": {
     "enabled": true
   },

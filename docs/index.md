@@ -7,6 +7,7 @@ Entry point for project documentation. FlorAI Backend is a Hono application on C
 - `docs/architecture.md` — stack, folder structure, request flow, middleware, bindings, data model, error handling, external integrations.
 - `docs/endpoints.md` — every HTTP route: method, path, auth requirement, request shape, response shape, error codes.
 - `docs/features.md` — user-facing capabilities as implemented.
+- External setup (Firebase project `florai-3212`, FCM service account, Google Sign-In OAuth clients/SHA-1, consent screen, moving off the personal Google account): app repo `jaovitm/FlorAI`, `docs/CONFIGURACAO_GOOGLE_FIREBASE.md`.
 - `docs/business-rules.md` — plan limits, ownership/authorization checks, validation rules, state transitions, with file:line references.
 
 ## Source Authority

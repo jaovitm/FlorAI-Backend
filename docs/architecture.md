@@ -18,6 +18,7 @@ See `docs/index.md` for the documentation set overview.
 
 - `src/index.ts` — app entry: Hono instance, global middleware, route mounting, error handlers. Default export is `{ fetch, scheduled }`; `app` is also a named export (used by tests).
 - `src/jobs/watering-push.ts` — cron job: watering pushes (see External Integrations).
+- `src/lib/google.ts` — Google ID token verification for `POST /auth/google` (JWKS fetched with `fetch`, verified with WebCrypto; no SDK).
 - `src/lib/watering.ts` — watering calendar in the user's timezone (due day, scheduled occurrence, daily slot).
 - `src/lib/crypto.ts` — IDs, tokens, hashing (SHA-256, PBKDF2), base64 helpers.
 - `src/lib/fcm.ts` — push sending via Firebase Cloud Messaging HTTP v1 (service-account JWT, access-token cache).
@@ -30,6 +31,7 @@ See `docs/index.md` for the documentation set overview.
 - `src/routes/*.ts` — one Hono sub-app per resource (see `docs/endpoints.md`).
 - `src/types/env.ts` — `Bindings`, `Variables`, `AppEnv`, `UserRow` types.
 - `migrations/0001_init.sql` — initial D1 schema.
+- `migrations/0004_google_login.sql` — adds `users.google_sub` (unique when not null). Google-only users have empty `password_hash`/`password_salt` and `password_iterations = 0`; password login rejects them.
 - `migrations/0003_watering_push.sql` — adds `reminders.scheduled_push_key` and `reminders.daily_push_key` (dedupe of watering pushes).
 - `migrations/0002_push_token.sql` — adds `users.push_token` and `users.push_platform`.
 
@@ -63,6 +65,7 @@ From `wrangler.jsonc` and `src/types/env.ts:1-10` (names only, no values):
 - `ANTHROPIC_API_KEY` — secret, required, used by `src/lib/identify.ts` (set via `wrangler secret put` per `.dev.vars.example:2`).
 - `ANTHROPIC_WORKSPACE_ID` — optional secret, sent as `anthropic-workspace-id` header when the API key is not bound to a workspace (`src/lib/identify.ts:58-59`).
 - `PUBLIC_BASE_URL` — optional; overrides the request's own origin when building `imageUrl` values (`src/lib/http.ts:42-43`). Falls back to the request origin.
+- `GOOGLE_CLIENT_ID` — plain var in `wrangler.jsonc` > `vars` (not a secret): OAuth "Web" client ID of Firebase project `florai-3212`; expected `aud` of Google ID tokens. The Android app passes the same ID as `serverClientId`.
 - `FIREBASE_SERVICE_ACCOUNT` — optional secret; full JSON of the Firebase service account (project `florai-3212`), used by `src/lib/fcm.ts` to send push. Set via `wrangler secret put FIREBASE_SERVICE_ACCOUNT < <file>.json`.
 
 Local development variables are copied from `.dev.vars.example` into an untracked `.dev.vars` file.

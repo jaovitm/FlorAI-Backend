@@ -2,6 +2,7 @@ import { Hono } from "hono";
 import type { AppEnv, UserRow } from "../types/env";
 import { hashPassword, newId, newToken, sha256Hex, verifyPassword } from "../lib/crypto";
 import { ApiError, validationError } from "../lib/errors";
+import { verifyGoogleIdToken } from "../lib/google";
 import { addDays, nowIso, parseTzOffset, readJson } from "../lib/http";
 import { userJson } from "../lib/serialize";
 import { requireAuth } from "../middleware/auth";
@@ -52,6 +53,7 @@ auth.post("/signup", async (c) => {
     tz_offset: parseTzOffset(c.req.header("X-Timezone-Offset")) ?? 0,
     push_token: null,
     push_platform: null,
+    google_sub: null,
     created_at: now,
   };
 
@@ -86,6 +88,8 @@ auth.post("/login", async (c) => {
     : null;
   const ok =
     user !== null &&
+    // Conta criada só pelo Google: não tem senha.
+    user.password_iterations > 0 &&
     (await verifyPassword(password, {
       hash: user.password_hash,
       salt: user.password_salt,
@@ -97,6 +101,71 @@ auth.post("/login", async (c) => {
 
   const token = await createSession(c.env.DB, user.id);
   return c.json({ token, user: userJson(user) });
+});
+
+// "Continuar com Google": entra na conta vinculada, vincula a conta com o mesmo
+// e-mail (o Google só envia e-mails verificados) ou cria uma conta sem senha.
+auth.post("/google", async (c) => {
+  const body = await readJson(c);
+  const idToken = typeof body.idToken === "string" ? body.idToken.trim() : "";
+  if (!idToken) throw validationError("Informe o idToken do Google.");
+
+  const google = await verifyGoogleIdToken(idToken, c.env.GOOGLE_CLIENT_ID);
+  if (!google) throw new ApiError(401, "invalid_google_token", "Não foi possível confirmar sua conta Google.");
+
+  const db = c.env.DB;
+  const linked = await db.prepare("SELECT * FROM users WHERE google_sub = ?").bind(google.sub).first<UserRow>();
+  if (linked) return c.json({ token: await createSession(db, linked.id), user: userJson(linked) });
+
+  const byEmail = await db.prepare("SELECT * FROM users WHERE email = ?").bind(google.email).first<UserRow>();
+  if (byEmail) {
+    if (byEmail.google_sub) {
+      throw new ApiError(
+        409,
+        "google_account_conflict",
+        "Este e-mail já está vinculado a outra conta Google. Entre com e-mail e senha.",
+      );
+    }
+    await db.prepare("UPDATE users SET google_sub = ? WHERE id = ?").bind(google.sub, byEmail.id).run();
+    return c.json({ token: await createSession(db, byEmail.id), user: userJson(byEmail) });
+  }
+
+  const now = nowIso();
+  const user: UserRow = {
+    id: newId("usr"),
+    name: (google.name ?? google.email.split("@")[0]).slice(0, 80),
+    email: google.email,
+    display_name: null,
+    has_completed_onboarding: 0,
+    password_hash: "",
+    password_salt: "",
+    password_iterations: 0,
+    tz_offset: parseTzOffset(c.req.header("X-Timezone-Offset")) ?? 0,
+    push_token: null,
+    push_platform: null,
+    google_sub: google.sub,
+    created_at: now,
+  };
+  try {
+    await db.batch([
+      db.prepare(
+        `INSERT INTO users (id, name, email, display_name, has_completed_onboarding,
+           password_hash, password_salt, password_iterations, tz_offset, google_sub, created_at)
+         VALUES (?, ?, ?, NULL, 0, '', '', 0, ?, ?, ?)`,
+      ).bind(user.id, user.name, user.email, user.tz_offset, user.google_sub, now),
+      db.prepare("INSERT INTO subscriptions (user_id, plan, started_at, renews_at) VALUES (?, 'free', ?, NULL)").bind(
+        user.id,
+        now,
+      ),
+    ]);
+  } catch (err) {
+    // Login simultâneo com a mesma conta: o outro pedido já criou o usuário.
+    if (String(err).includes("UNIQUE")) {
+      throw new ApiError(409, "google_account_conflict", "Não foi possível concluir o login. Tente de novo.");
+    }
+    throw err;
+  }
+  return c.json({ token: await createSession(db, user.id), user: userJson(user) }, 201);
 });
 
 auth.post("/logout", requireAuth, async (c) => {
