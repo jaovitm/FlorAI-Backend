@@ -7,6 +7,10 @@
   "vars": {
     "PLAY_PACKAGE_NAME": "com.florai"
   },
+  // Pushes de rega (src/jobs/watering-push.ts): checa a cada minuto o horário de cada lembrete.
+  "triggers": {
+    "crons": ["* * * * *"]
+  },
   "observability": {
     "enabled": true
   },

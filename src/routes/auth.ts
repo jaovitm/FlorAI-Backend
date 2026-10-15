@@ -56,6 +56,8 @@ auth.post("/signup", async (c) => {
     password_salt: pw.salt,
     password_iterations: pw.iterations,
     tz_offset: parseTzOffset(c.req.header("X-Timezone-Offset")) ?? 0,
+    push_token: null,
+    push_platform: null,
     created_at: now,
     // obfuscatedAccountId das compras no Google Play: o webhook acha o dono por ele.
     play_account_id: await sha256Hex(id),
@@ -111,7 +113,11 @@ auth.post("/login", async (c) => {
 });
 
 auth.post("/logout", requireAuth, async (c) => {
-  await c.env.DB.prepare("DELETE FROM sessions WHERE token_hash = ?").bind(c.get("tokenHash")).run();
+  await c.env.DB.batch([
+    c.env.DB.prepare("DELETE FROM sessions WHERE token_hash = ?").bind(c.get("tokenHash")),
+    // Quem saiu da conta não recebe mais push neste aparelho.
+    c.env.DB.prepare("UPDATE users SET push_token = NULL, push_platform = NULL WHERE id = ?").bind(c.get("user").id),
+  ]);
   return c.body(null, 204);
 });
 

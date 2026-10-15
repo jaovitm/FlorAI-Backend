@@ -16,7 +16,7 @@ All JSON error bodies follow `{ error: { code, message, feature?, plan? } }` (`s
 
 - `POST /auth/signup` — Public. Body: `name` (string, trimmed, required, ≤80 chars), `email` (trimmed, lowercased, must match `^[^\s@]+@[^\s@]+\.[^\s@]+$`, ≤254 chars), `password` (string, ≥6 chars). Header `X-Timezone-Offset` optional, sets initial `tz_offset` (default 0). Creates `users` + `subscriptions` (plan `free`) rows and a session. Response `201 { token, user }`. Errors: `400 validation_error` (missing/invalid fields), `409 email_taken` (existing email, checked pre-insert and on unique-constraint race) (`src/routes/auth.ts:24-75`).
 - `POST /auth/login` — Public. Body: `email`, `password`. Verifies password via PBKDF2 constant-time compare. Response `200 { token, user }`. Errors: `401 invalid_credentials` (unknown email or wrong password — same message for both) (`src/routes/auth.ts:77-98`).
-- `POST /auth/logout` — Auth. No body. Deletes the current session row. Response `204 No Content` (`src/routes/auth.ts:100-103`).
+- `POST /auth/logout` — Auth. No body. Deletes the current session row and clears the user's `push_token`/`push_platform`. Response `204 No Content` (`src/routes/auth.ts`).
 
 `user` in responses is `{ id, name, email, displayName, hasCompletedOnboarding, createdAt }` (`src/lib/serialize.ts:50-57`); `token` is an opaque bearer token, valid 90 days from issuance (`src/routes/auth.ts:9,14-22`).
 
@@ -65,9 +65,15 @@ All JSON error bodies follow `{ error: { code, message, feature?, plan? } }` (`s
 
 - `GET /reminders` — No params. Response `200 { items: [<reminder>] }`, ordered by `created_at ASC, id ASC` (`src/routes/reminders.ts:17-24`).
 - `PUT /reminders/:id` — Upsert; `:id` is client-generated (non-empty, ≤100 chars). Body: `plantId` (string, required, must be caller's own plant), `intervalDays` (integer 1–60), `hour` (integer 0–23), `minute` (integer 0–59), `lastWateredAt` (optional ISO-parseable date or `null`), `createdAt` (optional, only used to seed `created_at` on first insert). Requires the plan's `wateringAlerts` feature. Enforces at most one reminder per plant by deleting any other reminder row for the same `plantId` before the upsert. If `:id` already exists but belongs to another user, responds `404 not_found` (does not reveal it exists). Response `200 <reminder>`. Errors: `400 validation_error`; `403 plan_limit` (`feature: "wateringAlerts"`); `404 not_found` (plant not owned, or id owned by another user) (`src/routes/reminders.ts:27-76`).
+- `POST /reminders/:id/watered` — No body. Sets `last_watered_at` to now (used by the "Reguei" button on the watering notification). Requires the plan's `wateringAlerts` feature. Response `200 <reminder>`. Errors: `403 plan_limit` (`feature: "wateringAlerts"`); `404 not_found` (not the caller's reminder).
 - `DELETE /reminders/:id` — No body. Scoped to the caller. Response `204`. Errors: `404 not_found` (`src/routes/reminders.ts:78-84`).
 
 `<reminder>` shape: `{ id, plantId, intervalDays, hour, minute, lastWateredAt, createdAt }` (`src/lib/serialize.ts:96-104`).
+
+## Devices — `src/routes/devices.ts` (Auth)
+
+- `POST /devices` — Body: `token` (string, trimmed, non-empty, ≤4096 chars; FCM device token), `platform` (required, `android` or `ios`, case-insensitive — the app sends Flutter's `TargetPlatform.name`). Saves both in `users.push_token`/`users.push_platform` (one device per user: last call wins). If another user already holds the same token, both fields are cleared from that user first. Idempotent; the app calls it on every login and token refresh. Response `204`. Errors: `400 validation_error`.
+- `POST /devices/test` — No body. Sends a test push to the caller's saved token via `notifyUser` (`src/lib/push.ts`). Response `200 { sent: true }`; `502 { sent: false, invalidToken, error }` when FCM rejects it (token is cleared if `invalidToken`). Errors: `404 not_found` (no token saved); `500 internal_error` (`FIREBASE_SERVICE_ACCOUNT` not configured).
 
 ## Images — `src/routes/images.ts`
 

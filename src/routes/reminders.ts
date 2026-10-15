@@ -75,6 +75,22 @@ reminders.put("/:id", async (c) => {
   return c.json(reminderJson(row.results[0]));
 });
 
+// Registra a rega agora (botão "Reguei" da notificação).
+reminders.post("/:id/watered", async (c) => {
+  const user = c.get("user");
+  const plan = await getPlan(c.env.DB, user.id);
+  if (!PLAN_LIMITS[plan].wateringAlerts) {
+    throw planLimit("wateringAlerts", plan, "Lembretes de rega não estão disponíveis no plano gratuito.");
+  }
+  const row = await c.env.DB.prepare(
+    "UPDATE reminders SET last_watered_at = ? WHERE id = ? AND user_id = ? RETURNING *",
+  )
+    .bind(nowIso(), c.req.param("id"), user.id)
+    .first<ReminderRow>();
+  if (!row) throw notFound("Lembrete não encontrado.");
+  return c.json(reminderJson(row));
+});
+
 reminders.delete("/:id", async (c) => {
   const result = await c.env.DB.prepare("DELETE FROM reminders WHERE id = ? AND user_id = ?")
     .bind(c.req.param("id"), c.get("user").id)

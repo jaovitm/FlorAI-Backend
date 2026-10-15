@@ -4,7 +4,8 @@ See `docs/index.md` for the documentation set overview.
 
 ## Stack
 
-- Runtime: Cloudflare Workers, `nodejs_compat` flag (`wrangler.jsonc:6`).
+- Runtime: Cloudflare Workers, `nodejs_compat` flag (`wrangler.jsonc`).
+- Cron Trigger: `* * * * *` (`wrangler.jsonc` > `triggers.crons`) → `scheduled` handler in `src/index.ts` → `sendWateringPushes`. Locally, `docker compose` runs `wrangler dev --test-scheduled`, so `GET /__scheduled` runs the job on demand.
 - Framework: Hono 4 (`package.json:16`).
 - Database: Cloudflare D1 (SQLite), binding `DB`, database name `florai` (`wrangler.jsonc:10-17`).
 - Object storage: Cloudflare R2, binding `BUCKET`, bucket name `florai` (`wrangler.jsonc:18-23`).
@@ -15,8 +16,11 @@ See `docs/index.md` for the documentation set overview.
 
 ## Folder Structure
 
-- `src/index.ts` — app entry: Hono instance, global middleware, route mounting, error handlers.
+- `src/index.ts` — app entry: Hono instance, global middleware, route mounting, error handlers. Default export is `{ fetch, scheduled }`; `app` is also a named export (used by tests).
+- `src/jobs/watering-push.ts` — cron job: watering pushes (see External Integrations).
+- `src/lib/watering.ts` — watering calendar in the user's timezone (due day, scheduled occurrence, daily slot).
 - `src/lib/crypto.ts` — IDs, tokens, hashing (SHA-256, PBKDF2), base64 helpers.
+- `src/lib/fcm.ts` — push sending via Firebase Cloud Messaging HTTP v1 (service-account JWT, access-token cache).
 - `src/lib/errors.ts` — `ApiError` class and error-code constructors.
 - `src/lib/http.ts` — request/date helpers (`readJson`, `parseTzOffset`, `localDay`, `normalizeIso`, `publicOrigin`).
 - `src/lib/identify.ts` — Anthropic call and plant-identification schema/normalization.
@@ -25,13 +29,15 @@ See `docs/index.md` for the documentation set overview.
 - `src/middleware/auth.ts` — `requireAuth` bearer-token session middleware.
 - `src/routes/*.ts` — one Hono sub-app per resource (see `docs/endpoints.md`).
 - `src/types/env.ts` — `Bindings`, `Variables`, `AppEnv`, `UserRow` types.
-- `migrations/0001_init.sql` — full D1 schema (only migration present).
+- `migrations/0001_init.sql` — initial D1 schema.
+- `migrations/0005_watering_push.sql` — adds `reminders.scheduled_push_key` and `reminders.daily_push_key` (dedupe of watering pushes).
+- `migrations/0004_push_token.sql` — adds `users.push_token` and `users.push_platform`.
 
 ## Request Flow
 
 1. `src/index.ts:20-29` — global middleware: `logger()`, then `cors()` with `origin: "*"`, allowed methods `GET/POST/PUT/PATCH/DELETE/OPTIONS`, allowed headers `Authorization, Content-Type, Accept, X-Timezone-Offset`, `maxAge` 86400.
 2. `src/index.ts:33-35` — public routes mounted first: `/health`, `/images`, `/auth`.
-3. `src/index.ts:37-40` — `requireAuth` (`src/middleware/auth.ts`) is applied to `/me`, `/identifications`, `/collections`, `/plants`, `/subscription`, `/usage`, `/reminders` and each of their sub-paths (`<path>/*`), before those routers are mounted.
+3. `src/index.ts:37-40` — `requireAuth` (`src/middleware/auth.ts`) is applied to `/me`, `/identifications`, `/collections`, `/plants`, `/subscription`, `/usage`, `/reminders`, `/devices` and each of their sub-paths (`<path>/*`), before those routers are mounted.
 4. `src/index.ts:41-47` — protected routers mounted: `me`, `identifications`, `collections`, `plants`, `subscription`, `usage`, `reminders`.
 5. `src/index.ts:49` — unmatched routes return `404 { error: { code: "not_found", ... } }`.
 6. `src/index.ts:51-61` — global `onError`: `ApiError` instances are serialized via `toJSON()` at their own `status`; a Hono `HTTPException` with `status < 500` becomes `400 validation_error`; anything else is logged with `console.error` and returned as `500 internal_error`.
@@ -57,6 +63,7 @@ From `wrangler.jsonc` and `src/types/env.ts:1-10` (names only, no values):
 - `ANTHROPIC_API_KEY` — secret, required, used by `src/lib/identify.ts` (set via `wrangler secret put` per `.dev.vars.example:2`).
 - `ANTHROPIC_WORKSPACE_ID` — optional secret, sent as `anthropic-workspace-id` header when the API key is not bound to a workspace (`src/lib/identify.ts:58-59`).
 - `PUBLIC_BASE_URL` — optional; overrides the request's own origin when building `imageUrl` values (`src/lib/http.ts:42-43`). Falls back to the request origin.
+- `FIREBASE_SERVICE_ACCOUNT` — optional secret; full JSON of the Firebase service account (project `florai-3212`), used by `src/lib/fcm.ts` to send push. Set via `wrangler secret put FIREBASE_SERVICE_ACCOUNT < <file>.json`.
 
 Local development variables are copied from `.dev.vars.example` into an untracked `.dev.vars` file.
 
@@ -64,7 +71,7 @@ Local development variables are copied from `.dev.vars.example` into an untracke
 
 Schema source: `migrations/0001_init.sql`. All dates are ISO-8601 UTC strings with trailing `Z` (file header comment, line 2).
 
-- `users` — id, name, email (unique), display_name, has_completed_onboarding, password_hash/salt/iterations, tz_offset, created_at.
+- `users` — id, name, email (unique), display_name, has_completed_onboarding, password_hash/salt/iterations, tz_offset, created_at, push_token (nullable FCM token, partial unique index), push_platform (nullable, CHECK `android|ios`) — both added in `migrations/0004_push_token.sql`.
 - `sessions` — token_hash (PK), user_id (FK → users, cascade delete), created_at, expires_at. Indexed by user_id.
 - `subscriptions` — user_id (PK, FK → users, cascade delete), plan (CHECK in `free|basic|pro|premium`), started_at, renews_at (nullable).
 - `daily_usage` — (user_id, day) composite PK, FK → users cascade delete, identifications counter.
@@ -85,6 +92,8 @@ Database-level `ON DELETE CASCADE` exists for `sessions`, `subscriptions`, `dail
 
 - Anthropic API (`src/lib/identify.ts`): single call per identification request, model `claude-haiku-4-5`, `max_tokens: 4096`, structured output via `zodOutputFormat(IdentificationSchema)`, `timeout: 25_000`ms, `maxRetries: 1` (comment: designed to fit within a 60s client budget across up to 2 attempts, `src/lib/identify.ts:56`). Returns `null` (treated as "could not identify") when `stop_reason` is `refusal` or `max_tokens`, or when the model reports `identified: false` or empty name fields.
 - Cloudflare R2: identification photos stored under key `identifications/<id>.<ext>` (`src/routes/identifications.ts:75-81`) and served back publicly and unauthenticated via `GET /images/:file` (`src/routes/images.ts`), restricted to filenames matching `idn_[0-9a-f]+\.(jpg|png|webp)`.
+
+- Firebase Cloud Messaging (`src/lib/fcm.ts`): `sendPush` posts to `https://fcm.googleapis.com/v1/projects/<project_id>/messages:send` with `notification { title, body }`, optional string-only `data`, and Android `channel_id: "push"` (channel created by the app). Auth: RS256 JWT signed with the service account key via WebCrypto (Firebase Admin SDK does not run on Workers), exchanged at `token_uri` for an access token cached per isolate until ~60s before expiry. Returns `invalidToken: true` for `UNREGISTERED`/`INVALID_ARGUMENT` so callers can delete the token. Watering pushes (`src/jobs/watering-push.ts`, every minute): selects reminders of users with a `push_token` and a plan with `wateringAlerts`, and sends data-only messages (`sendData`, no `notification` block; the app builds the notification with a "Reguei" action) with `data { type: "watering", category, reminderId, plantId, plantName, title, body }`. Categories, one push per plant: `scheduled` — at the reminder's own `hour:minute` on the due day (last watered local day + `interval_days`, repeating every interval until watered; occurrences older than 2h are skipped), deduped by `scheduled_push_key`; `daily` — at 08:00 and 18:00 in the user's `tz_offset`, for plants due today or overdue, deduped by `daily_push_key` (skipped when a `scheduled` push was sent in the same run). Keys are written only on success; transient failures retry next minute; `invalidToken` clears the user's token. Wrapped by `notifyUser` (`src/lib/push.ts`), which reads `users.push_token` and clears it on `invalidToken`; used by `POST /devices/test`.
 
 ## Related
 

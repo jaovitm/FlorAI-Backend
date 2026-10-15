@@ -17,6 +17,8 @@ export type Bindings = {
   ADMIN_TOKEN?: string;
   /** `"true"` libera `POST /subscription` (troca de plano sem pagamento). Deixe desligado em produção. */
   ALLOW_TEST_SUBSCRIPTIONS?: string;
+  /** Opcional (secret): JSON da service account do Firebase, usado para enviar push (FCM). */
+  FIREBASE_SERVICE_ACCOUNT?: string;
 };
 
 export type UserRow = {
@@ -29,6 +31,10 @@ export type UserRow = {
   password_salt: string;
   password_iterations: number;
   tz_offset: number;
+  /** Token FCM do aparelho que recebe push (último login). */
+  push_token: string | null;
+  /** Sistema do aparelho de `push_token`. */
+  push_platform: "android" | "ios" | null;
   created_at: string;
   play_account_id: string | null;
   /** Código que o usuário compartilha no programa de indicação. */

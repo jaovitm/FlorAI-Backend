@@ -9,7 +9,9 @@
     "typecheck": "tsc --noEmit",
     "cf-typegen": "wrangler types",
     "db:migrate:local": "wrangler d1 migrations apply florai --local",
-    "db:migrate:remote": "wrangler d1 migrations apply florai --remote"
+    "db:migrate:remote": "wrangler d1 migrations apply florai --remote",
+    "test": "vitest run",
+    "test:watch": "vitest"
   },
   "dependencies": {
     "@anthropic-ai/sdk": "^0.128.0",
@@ -17,8 +19,10 @@
     "zod": "^4.6.5"
   },
   "devDependencies": {
+    "@cloudflare/vitest-pool-workers": "^0.22.0",
     "@cloudflare/workers-types": "^5.20260925.1",
     "typescript": "^7.0.2",
+    "vitest": "~4.1.11",
     "wrangler": "^4.140.0"
   }
 }

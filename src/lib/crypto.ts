@@ -8,7 +8,7 @@ const toHex = (bytes: ArrayBuffer | Uint8Array) =>
 
 const fromHex = (hex: string) => new Uint8Array(hex.match(/../g)!.map((h) => parseInt(h, 16)));
 
-const toBase64Url = (bytes: Uint8Array) =>
+export const toBase64Url = (bytes: Uint8Array) =>
   btoa(String.fromCharCode(...bytes)).replace(/\+/g, "-").replace(/\//g, "_").replace(/=+$/, "");
 
 export const randomBytes = (length: number) => crypto.getRandomValues(new Uint8Array(length));

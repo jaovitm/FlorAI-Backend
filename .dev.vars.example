@@ -18,3 +18,7 @@ ALLOW_TEST_SUBSCRIPTIONS=true
 # Senha do painel de afiliados em /admin (openssl rand -hex 24).
 # Em produção: npx wrangler secret put ADMIN_TOKEN
 ADMIN_TOKEN=
+
+# Opcional: push (FCM). JSON da service account do Firebase em uma linha.
+# Em produção: npx wrangler secret put FIREBASE_SERVICE_ACCOUNT < service-account.json
+# FIREBASE_SERVICE_ACCOUNT={"type":"service_account","project_id":"florai-3212",...}

@@ -2,7 +2,7 @@ import { Hono } from "hono";
 import { cors } from "hono/cors";
 import { HTTPException } from "hono/http-exception";
 import { logger } from "hono/logger";
-import type { AppEnv } from "./types/env";
+import type { AppEnv, Bindings } from "./types/env";
 import { ApiError } from "./lib/errors";
 import { requireAuth } from "./middleware/auth";
 import health from "./routes/health";
@@ -18,6 +18,8 @@ import webhooks from "./routes/webhooks";
 import referrals from "./routes/referrals";
 import affiliates from "./routes/affiliates";
 import admin from "./routes/admin";
+import devices from "./routes/devices";
+import { sendWateringPushes } from "./jobs/watering-push";
 
 const app = new Hono<AppEnv>();
 
@@ -43,7 +45,7 @@ app.route("/webhooks", webhooks);
 app.route("/", affiliates);
 app.route("/admin", admin);
 
-for (const path of ["/me", "/identifications", "/collections", "/plants", "/subscription", "/usage", "/reminders", "/referrals"]) {
+for (const path of ["/me", "/identifications", "/collections", "/plants", "/subscription", "/usage", "/reminders", "/referrals", "/devices"]) {
   app.use(path, requireAuth);
   app.use(`${path}/*`, requireAuth);
 }
@@ -55,6 +57,7 @@ app.route("/subscription", subscription);
 app.route("/usage", usage);
 app.route("/reminders", reminders);
 app.route("/referrals", referrals);
+app.route("/devices", devices);
 
 app.notFound((c) => c.json({ error: { code: "not_found", message: "Rota não encontrada." } }, 404));
 
@@ -70,4 +73,12 @@ app.onError((err, c) => {
   );
 });
 
-export default app;
+export { app };
+
+export default {
+  fetch: app.fetch,
+  // Cron (wrangler.jsonc > triggers): pushes de rega.
+  async scheduled(_controller, env, ctx) {
+    ctx.waitUntil(sendWateringPushes(env));
+  },
+} satisfies ExportedHandler<Bindings>;
