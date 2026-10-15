@@ -6,3 +6,15 @@ ANTHROPIC_API_KEY=sk-ant-...
 
 # Opcional: origem pública usada em imageUrl (padrão: origem da requisição).
 # PUBLIC_BASE_URL=https://api.florai.cc
+
+# Google Play: JSON da conta de serviço numa linha só, entre aspas simples.
+# Em produção: npx wrangler secret put GOOGLE_SERVICE_ACCOUNT_JSON < florai-backend-xxxx.json
+GOOGLE_SERVICE_ACCOUNT_JSON='{"type":"service_account","client_email":"...","private_key":"..."}'
+# Valor do ?secret= da assinatura push do Pub/Sub (openssl rand -hex 32).
+PLAY_WEBHOOK_SECRET=
+# "true" libera POST /subscription (troca de plano sem pagamento). Nunca em produção.
+ALLOW_TEST_SUBSCRIPTIONS=true
+
+# Senha do painel de afiliados em /admin (openssl rand -hex 24).
+# Em produção: npx wrangler secret put ADMIN_TOKEN
+ADMIN_TOKEN=

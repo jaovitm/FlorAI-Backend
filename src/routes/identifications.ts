@@ -5,6 +5,7 @@ import { ApiError, planLimit, validationError } from "../lib/errors";
 import { localDay, nowIso, publicOrigin } from "../lib/http";
 import { identifyPlant, type SupportedImageType } from "../lib/identify";
 import { getPlan, PLAN_LIMITS } from "../lib/plans";
+import { rewardReferral } from "../lib/referrals";
 import { identificationJson, type IdentificationRow } from "../lib/serialize";
 
 const MAX_IMAGE_BYTES = 5 * 1024 * 1024;
@@ -121,6 +122,14 @@ identifications.post("/", async (c) => {
        ON CONFLICT (user_id, day) DO UPDATE SET identifications = identifications + 1`,
     ).bind(user.id, day),
   ]);
+
+  // 6. A 1ª identificação de um usuário indicado libera o Pro grátis dos dois lados.
+  try {
+    await rewardReferral(c.env.DB, user.id);
+  } catch (err) {
+    // A identificação já foi gravada; a indicação continua pendente e sai na próxima.
+    console.error("Falha ao recompensar indicação", err);
+  }
 
   return c.json(identificationJson(row), 201);
 });

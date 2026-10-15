@@ -14,6 +14,10 @@ import plants from "./routes/plants";
 import { subscription, usage } from "./routes/subscription";
 import reminders from "./routes/reminders";
 import images from "./routes/images";
+import webhooks from "./routes/webhooks";
+import referrals from "./routes/referrals";
+import affiliates from "./routes/affiliates";
+import admin from "./routes/admin";
 
 const app = new Hono<AppEnv>();
 
@@ -33,8 +37,13 @@ app.get("/", (c) => c.json({ name: "FlorAI API", status: "running" }));
 app.route("/health", health);
 app.route("/images", images);
 app.route("/auth", auth);
+// Fora do requireAuth: o Pub/Sub não manda Bearer (autentica por `?secret=`).
+app.route("/webhooks", webhooks);
+// Programa de afiliados: link curto (/a/:code), instalações, painel do parceiro (/p/:token) e admin.
+app.route("/", affiliates);
+app.route("/admin", admin);
 
-for (const path of ["/me", "/identifications", "/collections", "/plants", "/subscription", "/usage", "/reminders"]) {
+for (const path of ["/me", "/identifications", "/collections", "/plants", "/subscription", "/usage", "/reminders", "/referrals"]) {
   app.use(path, requireAuth);
   app.use(`${path}/*`, requireAuth);
 }
@@ -45,6 +54,7 @@ app.route("/plants", plants);
 app.route("/subscription", subscription);
 app.route("/usage", usage);
 app.route("/reminders", reminders);
+app.route("/referrals", referrals);
 
 app.notFound((c) => c.json({ error: { code: "not_found", message: "Rota não encontrada." } }, 404));
 

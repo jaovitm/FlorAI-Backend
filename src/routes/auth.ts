@@ -3,6 +3,7 @@ import type { AppEnv, UserRow } from "../types/env";
 import { hashPassword, newId, newToken, sha256Hex, verifyPassword } from "../lib/crypto";
 import { ApiError, validationError } from "../lib/errors";
 import { addDays, nowIso, parseTzOffset, readJson } from "../lib/http";
+import { insertReferral, resolveCode } from "../lib/referrals";
 import { userJson } from "../lib/serialize";
 import { requireAuth } from "../middleware/auth";
 
@@ -26,6 +27,8 @@ auth.post("/signup", async (c) => {
   const name = typeof body.name === "string" ? body.name.trim() : "";
   const email = typeof body.email === "string" ? body.email.trim().toLowerCase() : "";
   const password = typeof body.password === "string" ? body.password : "";
+  // Código de amigo ou cupom de influenciador (opcional): vem do link da Play Store ou digitado.
+  const referralCode = typeof body.referralCode === "string" ? body.referralCode.trim() : "";
 
   if (!name) throw validationError("Informe seu nome.");
   if (name.length > 80) throw validationError("O nome pode ter no máximo 80 caracteres.");
@@ -37,11 +40,14 @@ auth.post("/signup", async (c) => {
 
   const existing = await c.env.DB.prepare("SELECT id FROM users WHERE email = ?").bind(email).first();
   if (existing) throw emailTaken();
+  // Código errado recusa o cadastro (antes de criar a conta), para o usuário corrigir ou apagar.
+  const codeOwner = referralCode ? await resolveCode(c.env.DB, referralCode) : null;
 
   const pw = await hashPassword(password);
   const now = nowIso();
+  const id = newId("usr");
   const user: UserRow = {
-    id: newId("usr"),
+    id,
     name,
     email,
     display_name: null,
@@ -51,18 +57,25 @@ auth.post("/signup", async (c) => {
     password_iterations: pw.iterations,
     tz_offset: parseTzOffset(c.req.header("X-Timezone-Offset")) ?? 0,
     created_at: now,
+    // obfuscatedAccountId das compras no Google Play: o webhook acha o dono por ele.
+    play_account_id: await sha256Hex(id),
+    // Criado em GET /referrals, que já trata colisão de código.
+    referral_code: null,
+    bonus_pro_until: null,
   };
 
   try {
     await c.env.DB.batch([
       c.env.DB.prepare(
         `INSERT INTO users (id, name, email, display_name, has_completed_onboarding,
-           password_hash, password_salt, password_iterations, tz_offset, created_at)
-         VALUES (?, ?, ?, NULL, 0, ?, ?, ?, ?, ?)`,
-      ).bind(user.id, name, email, pw.hash, pw.salt, pw.iterations, user.tz_offset, now),
+           password_hash, password_salt, password_iterations, tz_offset, created_at, play_account_id)
+         VALUES (?, ?, ?, NULL, 0, ?, ?, ?, ?, ?, ?)`,
+      ).bind(user.id, name, email, pw.hash, pw.salt, pw.iterations, user.tz_offset, now, user.play_account_id),
       c.env.DB.prepare(
         "INSERT INTO subscriptions (user_id, plan, started_at, renews_at) VALUES (?, 'free', ?, NULL)",
       ).bind(user.id, now),
+      // A recompensa sai na 1ª identificação do novo usuário (ver rewardReferral).
+      ...(codeOwner ? [insertReferral(c.env.DB, user.id, codeOwner, now)] : []),
     ]);
   } catch (err) {
     // Cadastro simultâneo com o mesmo e-mail.

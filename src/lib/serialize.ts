@@ -1,4 +1,5 @@
 import type { UserRow } from "../types/env";
+import { effectivePlan, isPlan } from "./plans";
 
 export type IdentificationRow = {
   id: string;
@@ -87,11 +88,24 @@ export const plantJson = (r: PlantRow) => ({
   createdAt: r.created_at,
 });
 
-export const subscriptionJson = (r: SubscriptionRow) => ({
-  plan: r.plan,
-  startedAt: r.started_at,
-  renewsAt: r.renews_at,
-});
+/**
+ * `plan` é o plano em vigor (loja ou bônus de indicação, o maior). `storePlan` é o
+ * assinado no Google Play e `bonusUntil` o fim do Pro grátis, se ainda vale.
+ * `renewsAt` é da assinatura da loja; vem `null` quando o plano em vigor é o do bônus.
+ */
+export function subscriptionJson(r: SubscriptionRow, bonusProUntil: string | null = null) {
+  const storePlan = isPlan(r.plan) ? r.plan : "free";
+  const now = new Date().toISOString();
+  const bonusUntil = bonusProUntil && bonusProUntil > now ? bonusProUntil : null;
+  const plan = effectivePlan(storePlan, bonusUntil, now);
+  return {
+    plan,
+    startedAt: r.started_at,
+    renewsAt: plan === storePlan ? r.renews_at : null,
+    storePlan,
+    bonusUntil,
+  };
+}
 
 export const reminderJson = (r: ReminderRow) => ({
   id: r.id,

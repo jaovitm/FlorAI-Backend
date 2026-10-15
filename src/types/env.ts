@@ -7,6 +7,16 @@ export type Bindings = {
   ANTHROPIC_WORKSPACE_ID?: string;
   /** Opcional: origem pública usada em `imageUrl` (padrão: origem da requisição). */
   PUBLIC_BASE_URL?: string;
+  /** Secret: JSON da conta de serviço com acesso ao Play Console. */
+  GOOGLE_SERVICE_ACCOUNT_JSON: string;
+  /** Pacote do app no Google Play, ex.: `com.florai`. */
+  PLAY_PACKAGE_NAME: string;
+  /** Secret: valor do `?secret=` configurado na assinatura push do Pub/Sub. */
+  PLAY_WEBHOOK_SECRET: string;
+  /** Secret: senha do painel de afiliados (`/admin`). Sem ela o painel fica desligado. */
+  ADMIN_TOKEN?: string;
+  /** `"true"` libera `POST /subscription` (troca de plano sem pagamento). Deixe desligado em produção. */
+  ALLOW_TEST_SUBSCRIPTIONS?: string;
 };
 
 export type UserRow = {
@@ -20,6 +30,11 @@ export type UserRow = {
   password_iterations: number;
   tz_offset: number;
   created_at: string;
+  play_account_id: string | null;
+  /** Código que o usuário compartilha no programa de indicação. */
+  referral_code: string | null;
+  /** Fim do Pro grátis ganho por indicações (ISO UTC). */
+  bonus_pro_until: string | null;
 };
 
 export type Variables = {
